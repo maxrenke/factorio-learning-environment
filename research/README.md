@@ -6,7 +6,8 @@ by Hopkins et al. (2025).
 
 **Author:** [@maxrenke](https://github.com/maxrenke)
 **Status:** Pre-experiment (setup phase)
-**Fork of:** `JackHopkins/factorio-learning-environment` @ v0.3.0
+**FLE version:** v0.3.0 (pinned - Factorio 1.1, 24 lab tasks, paper version)
+**Factorio version:** 1.1.x (downgrade via Steam betas)
 
 ---
 
@@ -55,31 +56,36 @@ Full setup instructions are in [`notes/research-notes.md`](notes/research-notes.
 Quick version:
 
 ```powershell
-# 1. Install from this fork
+# 0. Downgrade Factorio to 1.1 via Steam
+#    Right-click Factorio -> Properties -> Betas -> select 1.1.x-branch
+
+# 1. Clone and set up
 git clone https://github.com/maxrenke/factorio-learning-environment.git
 cd factorio-learning-environment
 git remote add upstream https://github.com/JackHopkins/factorio-learning-environment.git
 uv venv --python 3.13 && .venv\Scripts\Activate.ps1
-uv pip install -e ".[eval]"
+uv pip install "factorio-learning-environment[eval]==0.3.0"
 
 # 2. Copy FLE scenario into local Factorio (replaces Docker)
 Copy-Item -Recurse fle\cluster\scenarios\default_lab_scenario `
     "$env:APPDATA\Factorio\scenarios\default_lab_scenario"
 
 # 3. Download TAS mod, extract to research/data/tas/
-# https://mods.factorio.com/mod/Theis_TAS_Steelaxe2
+#    https://mods.factorio.com/mod/Theis_TAS_Steelaxe2
+Expand-Archive "$env:USERPROFILE\Downloads\Theis_TAS_Steelaxe2_0.3.0.zip" `
+    -DestinationPath research\data\tas
 
-# 4. Parse TAS
+# 4. Parse TAS into FLE-compatible calls
 python research/scripts/parse_tas.py
 
 # 5. Start Ollama + pull models
 ollama pull qwen2.5-coder:14b
 ollama pull deepseek-r1:14b
 
-# 6. Start Factorio headless
+# 6. Start Factorio 1.1 headless
 .\research\scripts\start_headless.ps1
 
-# 7. Run baseline
+# 7. Run baseline (zero-shot)
 python research/scripts/run_experiment.py --model ollama-qwen2.5-coder:14b --condition zero_shot
 
 # 8. Run with TAS context
