@@ -296,28 +296,224 @@ variant which has thinking stripped by default.
 
 ---
 
-## TAS as Training Data
+## Training Roadmap: Four Phases
 
-### Approach 1: Few-shot context injection (implement first)
+The research follows a four-phase progression from zero-training-cost to full RL.
+Each phase builds on the previous. Stop at any phase if results are already strong enough.
 
-Convert TAS steps to FLE API calls and prepend to system prompt. Fast to implement,
-no training loop needed, directly testable tonight.
+---
 
-Parse script: `research/scripts/parse_tas.py`
-Agent: `research/agents/tas_agent.py`
+### Phase 1 - Large model + few-shot TAS (do tonight)
 
-### Approach 2: Fine-tuning (later phase)
+**What:** Frozen `qwen2.5-coder:14b` with TAS steps injected into the system prompt.
+No training. No code changes to the model. Just context engineering.
 
-Collect FLE trajectories (state, action, outcome) from the TAS-converted sequence,
-then fine-tune using Unsloth on the local GPU. The 14B model is borderline for LoRA
-fine-tuning on 12GB - feasible with 4-bit quantization and rank 16.
+**How it works:**
+- `parse_tas.py` converts `steps.lua` -> list of FLE Python API calls
+- `TASGroundedAgent` prepends the first N steps as a few-shot block to the system prompt
+- Model reads the examples and mimics the pattern when generating its own code
+- Model weights are never updated between runs
 
-Tools: [Unsloth](https://github.com/unslothai/unsloth) for efficient LoRA fine-tuning.
+**Scripts:**
+- `research/scripts/parse_tas.py` - converts TAS to FLE calls
+- `research/agents/tas_agent.py` - `TASGroundedAgent(BasicAgent)` subclass
 
-### Approach 3: Retrieval-augmented (future)
+**Run:**
+```powershell
+python research/scripts/run_experiment.py --model ollama-qwen2.5-coder:14b --condition zero_shot
+python research/scripts/run_experiment.py --model ollama-qwen2.5-coder:14b --condition tas_40
+```
 
-Instead of injecting all TAS steps, embed each step and retrieve the K most relevant
-ones given the current game state. Reduces context length and focuses the signal.
+**Ablation:** vary N = 10, 40, 100 steps. Hypothesis: early-game sequencing (steps 1-40)
+provides the most signal; full 5721 steps exceeds context budget (~230K tokens).
+
+**Success criteria:** qwen2.5-coder:14b + TAS beats its own zero-shot baseline.
+The FLE paper ceiling for this model class is 7/24 (Claude 3.5-Sonnet).
+
+---
+
+### Phase 2 - Large model + LoRA supervised fine-tuning
+
+**What:** Fine-tune `qwen2.5-coder:14b` on TAS-derived (state, action) pairs using
+Low-Rank Adaptation (LoRA). The model weights change but only the small A/B matrices
+- base model stays frozen.
+
+**Why LoRA:**
+- Full fine-tuning of 14B weights = ~56GB VRAM. Impossible on 12GB.
+- LoRA freezes the original weight matrix W and adds two small matrices A (d x r) and B (r x d).
+  Forward pass: `output = W*x + (A*B)*x` where r=16 (rank), so we train ~20M params vs 14B.
+- With 4-bit quantization (bitsandbytes/unsloth) the base model uses ~8.5GB, leaving ~3.5GB
+  for LoRA adapters and gradients. Tight but fits.
+
+**Training data format** (`research/data/training_data.jsonl`):
+```json
+{"prompt": "# Factorio step N\n# Inventory: {...}\n# Previous actions:\n#   step N-10: ...\n",
+ "completion": "move_to(nearest('iron-ore'))\nharvest_resource(nearest('iron-ore'))"}
+```
+
+Each line = one TAS step. Prompt = game state context (inventory + last 10 steps).
+Completion = the FLE Python API call the TAS took at that step.
+
+**Scripts:**
+- `research/scripts/build_training_data.py` - converts `tas_trajectory.json` -> JSONL pairs
+- `research/scripts/finetune_lora.py` - Unsloth + SFTTrainer pipeline
+
+**Config:**
+```python
+MODEL_NAME = "Qwen/Qwen2.5-Coder-14B-Instruct"
+LORA_RANK = 16           # small r = fewer params = fits in VRAM
+LORA_ALPHA = 32          # typically 2x rank
+TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj",
+                  "gate_proj", "up_proj", "down_proj"]
+load_in_4bit = True      # 4-bit quantization via bitsandbytes
+use_gradient_checkpointing = "unsloth"  # saves ~30% VRAM
+optim = "adamw_8bit"     # 8-bit optimizer
+epochs = 3
+```
+
+**Output:** `research/models/qwen25coder-14b-factorio-lora/` (adapter weights only, ~100MB)
+
+**Run:**
+```powershell
+python research/scripts/build_training_data.py
+python research/scripts/finetune_lora.py
+```
+
+**Evaluate with Ollama:**
+```powershell
+# Export LoRA to GGUF + load in Ollama (see finetune_lora.py comments)
+python research/scripts/run_experiment.py --model ollama-qwen25coder-14b-factorio --condition zero_shot
+```
+
+**Hypothesis:** LoRA-tuned model outperforms Phase 1 (few-shot only) because the weights
+themselves encode Factorio knowledge, not just the context window.
+
+---
+
+### Phase 3 - Small dedicated model + aggressive LoRA
+
+**What:** Same LoRA pipeline but on a 1.5B-3B model. The goal shifts from "improve a
+large model" to "build a model specialized for Factorio."
+
+**Target models:**
+- `Qwen/Qwen2.5-Coder-1.5B-Instruct` (~1GB VRAM) - smallest viable coder
+- `Qwen/Qwen2.5-Coder-3B-Instruct` (~2GB VRAM) - recommended starting point
+- `microsoft/phi-3-mini-4k-instruct` (~2.5GB VRAM) - alternative
+
+**Why smaller:**
+- 12GB VRAM freed from base model leaves ~10GB for LoRA + gradients + optimizer states
+- Can use higher rank (r=64) and more epochs without OOM
+- Faster training iterations = more experiments per day
+- If a 3B model fine-tuned on TAS approaches a 14B zero-shot, that's a strong result
+
+**Distillation option:** Use Phase 2's fine-tuned 14B as the teacher. Generate synthetic
+(state, action) pairs by running the 14B model on novel game states, then train the 3B on
+those outputs. This transfers the 14B's Factorio-specific knowledge to the 3B without
+requiring more TAS data.
+
+**Config changes from Phase 2:**
+```python
+MODEL_NAME = "Qwen/Qwen2.5-Coder-3B-Instruct"
+LORA_RANK = 64       # can go higher on small model
+epochs = 5           # more epochs since base is weaker
+```
+
+**Hypothesis:** A 3B model fine-tuned on TAS outperforms a 14B model zero-shot on
+Factorio-specific tasks, demonstrating that specialization beats scale for constrained domains.
+
+---
+
+### Phase 4 - Small model + RL from FLE scores (Code Bullet equivalent)
+
+**What:** Treat the fine-tuned 3B model as an RL policy. FLE is the environment.
+Use shaped rewards from production metrics - not sparse task completion - to train
+the model to actually discover and improve Factorio strategy autonomously.
+
+**Why RL (not just SFT):**
+- SFT (Phases 2-3) teaches the model to imitate the TAS. It can't exceed TAS performance.
+- RL lets the model discover strategies the TAS didn't use. The reward signal is production
+  output, so the model is incentivized to optimize the factory - potentially discovering
+  automation, throughput tricks, and efficient builds that the TAS didn't show.
+
+**Reward shaping (dense rewards to avoid sparse signal problem):**
+
+Factorio episodes take 7+ minutes. If you only reward task completion at the end, the model
+gets almost no signal during training - the "sparse reward problem." Instead, reward every
+step based on production metrics:
+
+```python
+def compute_reward(state: GameState) -> float:
+    return (
+        state.iron_plates_produced   * 0.001 +   # basic production
+        state.copper_plates_produced * 0.001 +   # basic production
+        state.gear_wheels_produced   * 0.010 +   # intermediate (requires setup)
+        state.science_packs_produced * 0.100 +   # advanced (strong signal)
+        state.task_completed         * 1.000      # terminal reward (strongest)
+    )
+```
+
+Why this works: science packs require copper, iron, and gears. Maximizing science pack
+production emergently requires the model to learn all upstream production. The model
+discovers automation naturally because a manual loop produces fewer science packs
+than an automated factory loop.
+
+**Curriculum learning (start simple, increase complexity):**
+
+The model starts with a vocabulary of ~27 FLE API calls but no game knowledge.
+Starting directly on "complete FLE lab task 12" is too hard - no signal for 1000 steps.
+Instead, use staged goals:
+
+| Stage | Goal | Reward shape | What it teaches |
+|-------|------|--------------|-----------------|
+| 1 | Make 1 iron plate | +1.0 on first plate, sparse ok | Mine ore, smelt, verify result |
+| 2 | Efficient iron production | `iron_plates * 0.001` continuous | Automate smelting, throughput |
+| 3 | Copper plates | `+copper_plates * 0.001` added | Second resource type, parallel processes |
+| 4 | Gear wheels | `+gears * 0.01` added | Recipe chaining, intermediate products |
+| 5 | Science packs/minute | `+science * 0.1` added | Full production chain, automation |
+| 6 | FLE lab tasks | Full reward + `task_complete * 1.0` | Benchmark performance |
+
+Each stage inherits the reward from the previous stage. The model is never reset -
+it's one continuous learning process with increasing reward signal.
+
+**Algorithm:** PPO (Proximal Policy Optimization) or GRPO (Group Relative Policy Optimization).
+- GRPO (used in DeepSeek-R1) is simpler to implement, no value network needed
+- PPO is more stable but requires a separate critic model (~doubles VRAM)
+- Start with GRPO via [trl](https://github.com/huggingface/trl) library
+
+**Initialization:** Start from Phase 3's LoRA-fine-tuned 3B model, not a blank model.
+The TAS LoRA provides a warm start - the policy already knows basic Factorio actions
+before RL begins. This dramatically reduces the cold-start exploration problem.
+
+**RL training loop:**
+```
+for episode in curriculum:
+    state = env.reset()
+    for step in range(max_steps):
+        action = policy.generate(state_prompt)   # LLM generates Python
+        next_state, reward = env.step(action)    # FLE executes Python
+        buffer.add(state, action, reward)
+        state = next_state
+    policy.update(buffer)   # PPO/GRPO gradient update
+```
+
+**Scripts needed (Phase 4, future):**
+- `research/scripts/train_rl.py` - RL training loop with curriculum
+- `research/scripts/reward.py` - reward computation from FLE game state
+
+**Hypothesis:** A 3B model + TAS warm start + RL training eventually exceeds the
+14B zero-shot baseline and potentially the 14B + TAS few-shot baseline, demonstrating
+that self-improvement through RL is more sample-efficient when initialized from expert demos.
+
+---
+
+### Phase summary
+
+| Phase | Model | Method | Training | Est. VRAM | Files |
+|-------|-------|--------|----------|-----------|-------|
+| 1 | qwen2.5-coder:14b | Few-shot TAS context | None | ~8.5GB | `tas_agent.py` |
+| 2 | qwen2.5-coder:14b | LoRA SFT on TAS | ~2h | ~11GB | `finetune_lora.py` |
+| 3 | qwen2.5-coder:3b | Aggressive LoRA + distill | ~30min | ~4GB | `finetune_lora.py` |
+| 4 | qwen2.5-coder:3b | RL from FLE (PPO/GRPO) | days | ~4GB | `train_rl.py` (future) |
 
 ---
 
@@ -377,8 +573,9 @@ structured expert knowledge for agent training.
    - Limitations: single TAS, single category (steelaxe%), map-specific coordinates
 
 7. **Conclusion + Future Work**
-   - Fine-tuning on TAS trajectories
-   - Retrieval-augmented demonstration selection
+   - Phase 2-3 LoRA fine-tuning on TAS trajectories (if not run)
+   - Phase 4 RL from FLE scores: reward shaping + curriculum
+   - Retrieval-augmented demonstration selection (per-step retrieval vs upfront injection)
    - Multi-TAS corpus (any%, rail world, deathworld)
 
 ### Target venues
@@ -424,7 +621,7 @@ Goal: implement TAS context injection, run the 2x2 core experiment.
 
 Milestone: answer the primary question - does TAS context improve lab task completion?
 
-### RUN - Full matrix, ablations, fine-tuning
+### RUN - Full matrix, ablations, fine-tuning (Phase 2-3)
 
 Goal: publication-quality data, paper draft, PR to upstream.
 
@@ -433,10 +630,27 @@ Goal: publication-quality data, paper draft, PR to upstream.
 - [ ] **R3** - Ablation: TAS context size (10 steps, 40, 100, 200, full 5721)
 - [ ] **R4** - Ablation: which TAS steps matter? (opening only, research phase, build phase)
 - [ ] **R5** - Per-task analysis: classify 24 tasks by horizon length, check which improve
-- [ ] **R6** - Fine-tuning experiment: collect FLE trajectories, LoRA fine-tune with Unsloth
-- [ ] **R7** - Set up automated nightly eval: run baseline + TAS on 1 task per model, log to SQLite
-- [ ] **R8** - Write paper sections 3 and 4 (method + experiments)
-- [ ] **R9** - Open PR to FLE upstream with: `parse_tas.py`, `TASGroundedAgent`, results
+- [ ] **R6** - Phase 2: run `build_training_data.py` -> `finetune_lora.py` on qwen2.5-coder:14b
+- [ ] **R7** - Eval Phase 2 LoRA-tuned 14b on all 24 tasks, compare to Phase 1 few-shot
+- [ ] **R8** - Phase 3: fine-tune qwen2.5-coder:3b, optionally distill from Phase 2 14b
+- [ ] **R9** - Set up automated nightly eval: run baseline + TAS on 1 task per model, log to SQLite
+- [ ] **R10** - Write paper sections 3 and 4 (method + experiments)
+- [ ] **R11** - Open PR to FLE upstream with: `parse_tas.py`, `TASGroundedAgent`, results
+
+### SPRINT - RL from FLE scores (Phase 4)
+
+Goal: dedicated Factorio model trained via self-play + reward shaping. Code Bullet equivalent.
+
+- [ ] **S1** - Verify FLE exposes per-step production metrics (iron_plates, copper_plates, etc.)
+              from `game_state` or via RCON command. If not, write a mod or RCON query.
+- [ ] **S2** - Implement `research/scripts/reward.py` with the shaped reward formula
+- [ ] **S3** - Implement `research/scripts/train_rl.py` - curriculum stage 1 (make 1 iron plate)
+              using GRPO via `trl.GRPOTrainer`. Initialize from Phase 3 3B LoRA adapter.
+- [ ] **S4** - Run stage 1 training until convergence. Log reward curve. Eval on FLE task 1.
+- [ ] **S5** - Unlock stage 2 (efficient iron production), retrain. Log improvement.
+- [ ] **S6** - Progress through curriculum stages 3-6 (copper, gears, science, lab tasks)
+- [ ] **S7** - Compare Phase 4 RL model against all prior phases on 24 lab tasks
+- [ ] **S8** - Write paper section 5 (RL results) and update abstract with findings
 
 ---
 

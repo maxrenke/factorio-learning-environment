@@ -28,6 +28,18 @@ open-weight local models (7B-14B parameters).
 3. How many TAS steps are needed? Does the full run help, or just the early-game opening?
 4. Can a local 14B model + TAS demonstrations close the gap with Claude 3.5-Sonnet zero-shot?
 
+## Four-Phase Research Plan
+
+| Phase | Model | Method | Goal |
+|-------|-------|--------|------|
+| **1** | qwen2.5-coder:14b (frozen) | Few-shot TAS context injection | Does expert demonstration context improve lab task completion? |
+| **2** | qwen2.5-coder:14b | LoRA SFT on TAS (Unsloth, rank 16) | Do fine-tuned weights outperform in-context examples? |
+| **3** | qwen2.5-coder:3b | Aggressive LoRA + distillation from Phase 2 | Can a small specialized model match a large zero-shot model? |
+| **4** | qwen2.5-coder:3b | RL from FLE scores (PPO/GRPO, reward shaping, curriculum) | Can the model exceed the TAS via self-improvement? |
+
+Full technical details including reward shaping formula and curriculum stages are in
+[`notes/research-notes.md`](notes/research-notes.md) under "Training Roadmap: Four Phases".
+
 ## Directory Structure
 
 ```
@@ -41,7 +53,9 @@ research/
 │   ├── parse_tas.py             <- convert steps.lua -> FLE Python API calls
 │   ├── run_experiment.py        <- run 24-task eval, save JSON results
 │   ├── summarize_results.py     <- print comparison matrix from results/
-│   └── start_headless.ps1       <- start Factorio headless (Windows, no Docker)
+│   ├── start_headless.ps1       <- start Factorio headless (Windows, no Docker)
+│   ├── build_training_data.py   <- Phase 2: TAS trajectory -> (prompt, completion) JSONL
+│   └── finetune_lora.py         <- Phase 2/3: Unsloth + SFTTrainer LoRA fine-tuning
 ├── data/
 │   └── (TAS files go here - not committed, see setup below)
 ├── results/
