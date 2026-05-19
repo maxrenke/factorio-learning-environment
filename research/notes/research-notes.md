@@ -4,9 +4,14 @@
 **Author:** maxrenke
 **Status:** Pre-experiment - setup phase
 
-> **Audit note (2026-05-18):** FLE is now v0.4.0 (not v0.3.0 as originally noted).
-> Inventory API changed - returns arrays not dicts. Task count is now 33 (not 24).
-> All version references below should be treated accordingly.
+## Scope (locked)
+
+**Proof of concept targets Factorio 1.1 + FLE v0.3.0 + Steel Axe% TAS.**
+
+- Factorio 2.0 / Space Age has no TAS yet. Defer until PoC is complete.
+- FLE v0.3.0 (Oct 2025) is the paper version, targets Factorio 1.1.110, has 24 lab tasks.
+- FLE v0.4.0+ migrated to Factorio 2.0 - do not use for this research phase.
+- AutoFactorio (2.0) deferred. AnyPctTAS (0.18) skipped permanently.
 
 ---
 
@@ -182,16 +187,22 @@ The game client connects as a LAN spectator. You watch the agent play in real ti
 ### One-time setup
 
 ```powershell
+# 0. Downgrade Factorio to 1.1 via Steam
+#    Right-click Factorio in Library -> Properties -> Betas
+#    Select "1.1.x-branch" from the dropdown -> Close
+#    Steam will download Factorio 1.1.x (~1GB)
+#    Confirm: factorio.exe --version should print 1.1.x
+
 # 1. Clone this fork (already done if you're reading this in the repo)
 cd "$env:USERPROFILE\repos"
 git clone https://github.com/maxrenke/factorio-learning-environment.git
 cd factorio-learning-environment
 git remote add upstream https://github.com/JackHopkins/factorio-learning-environment.git
 
-# 2. Python environment
+# 2. Python environment - install FLE pinned to v0.3.0 (Factorio 1.1, 24 tasks, paper version)
 uv venv --python 3.13
 .venv\Scripts\Activate.ps1
-uv pip install -e ".[eval]"
+uv pip install "factorio-learning-environment==0.3.0" "factorio-learning-environment[eval]==0.3.0"
 
 # 3. Copy FLE scenario into local Factorio
 New-Item -ItemType Directory -Force "$env:APPDATA\Factorio\scenarios\default_lab_scenario"
@@ -383,8 +394,9 @@ structured expert knowledge for agent training.
 
 Goal: confirm FLE works on this machine, reproduce paper baseline numbers.
 
+- [ ] **C0** - Downgrade Factorio to 1.1 via Steam betas (Properties -> Betas -> 1.1.x-branch)
 - [ ] **C1** - Extract TAS zip: `Expand-Archive` to `research/data/tas/`
-- [ ] **C2** - Install FLE from this fork: `uv pip install -e ".[eval]"`
+- [ ] **C2** - Install FLE v0.3.0: `uv pip install "factorio-learning-environment[eval]==0.3.0"`
 - [ ] **C3** - Copy scenario into Factorio, create server-settings.json
 - [ ] **C4** - Start Ollama, pull `qwen2.5-coder:14b`
 - [ ] **C5** - Start Factorio headless, verify RCON connects
@@ -503,13 +515,13 @@ Results saved to `research/results/` as JSON:
    The TAS plays on a generated freeplay map. The demonstrations may not transfer perfectly
    to FLE's constrained lab environment - this is an interesting finding either way.
 
-6. **FLE is v0.4.0 not v0.3.0**: CHANGELOG confirms v0.4.0 is current. Inventory API
-   returns arrays not dicts. Task count is 33 not 24. Verify all eval code against
-   installed version before running. FLE is also a NeurIPS 2025 poster - higher visibility
-   means the publication window is tighter.
+6. **Pin to FLE v0.3.0**: Upstream is now v0.4.3 (Factorio 2.0, arrays API, 33 tasks).
+   We target v0.3.0 (Factorio 1.1, dict API, 24 tasks). Install with version pin.
+   FLE is a NeurIPS 2025 poster - higher visibility tightens publication window.
 
-7. **Task-loading in run_experiment.py is unverified**: The script tries three hardcoded
-   config paths. One may not exist. Verify the correct path after installing FLE v0.4.0.
+7. **Task-loading resolved**: `run_experiment.py` now imports directly from
+   `fle.eval.tasks.task_definitions.lab_play.throughput_tasks.THROUGHPUT_TASKS`.
+   Tasks are string env_ids. Verified against v0.3.0 source.
 
 ---
 

@@ -32,21 +32,20 @@ from fle.env import FactorioInstance
 
 
 def load_tasks():
-    """Load FLE lab tasks. Adjust path if needed after inspecting configs/."""
-    task_paths = [
-        Path("fle/configs/experiments/lab_tasks.json"),
-        Path("fle/configs/experiments-2/lab_tasks.json"),
-        Path("fle/configs/gym_run_config.json"),
-    ]
-    for p in task_paths:
-        if p.exists():
-            data = json.loads(p.read_text())
-            # Handle different config shapes
-            if isinstance(data, list):
-                return data
-            if "tasks" in data:
-                return data["tasks"]
-    raise FileNotFoundError("Could not find lab tasks config. Check fle/configs/experiments/")
+    """
+    Load FLE v0.3.0 lab tasks via the task registry.
+    Returns list of task_key strings (env_ids).
+    v0.3.0 has 24 throughput tasks defined in:
+      fle.eval.tasks.task_definitions.lab_play.throughput_tasks.THROUGHPUT_TASKS
+    """
+    try:
+        from fle.eval.tasks.task_definitions.lab_play.throughput_tasks import THROUGHPUT_TASKS
+        return list(THROUGHPUT_TASKS.keys())
+    except ImportError:
+        raise ImportError(
+            "Could not import FLE task definitions. "
+            "Ensure FLE v0.3.0 is installed: uv pip install 'factorio-learning-environment==0.3.0'"
+        )
 
 
 async def run_single_task(instance, agent, task, max_steps: int):
@@ -109,12 +108,22 @@ async def main(args):
     task_results = {}
     completed_count = 0
 
-    for i, task_config in enumerate(tasks):
-        task_name = getattr(task_config, "name", None) or task_config.get("name", f"task_{i+1:02d}")
+    for i, task_key in enumerate(tasks):
+        task_name = task_key
         print(f"  [{i+1:2d}/{len(tasks)}] {task_name} ... ", end="", flush=True)
 
-        agent = make_agent(task_config)
-        result = await run_single_task(instance, agent, task_config, args.max_steps)
+        # v0.3.0: create task object from registry key
+        try:
+            from fle.eval.tasks.task_definitions.task_registry import TaskRegistry
+            registry = TaskRegistry()
+            task_obj = registry.create_task(task_key)
+        except Exception as e:
+            print(f"ERROR creating task: {e}")
+            task_results[task_name] = {"completed": False, "score": 0, "steps_taken": 0, "error": str(e)}
+            continue
+
+        agent = make_agent(task_obj)
+        result = await run_single_task(instance, agent, task_obj, args.max_steps)
 
         task_results[task_name] = result
         if result["completed"]:

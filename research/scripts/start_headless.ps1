@@ -1,4 +1,5 @@
 # Start Factorio headless server for FLE experiments (Windows, no Docker)
+# Requires Factorio 1.1.x (NOT 2.0). Downgrade via Steam: Properties -> Betas -> 1.1.x-branch
 # Run from repo root. Factorio client can connect to localhost to spectate.
 
 param(
