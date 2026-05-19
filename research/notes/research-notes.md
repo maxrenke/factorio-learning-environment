@@ -593,15 +593,73 @@ structured expert knowledge for agent training.
 Goal: confirm FLE works on this machine, reproduce paper baseline numbers.
 
 - [ ] **C0** - Downgrade Factorio to 1.1 via Steam betas (Properties -> Betas -> 1.1.x-branch)
-- [ ] **C1** - Extract TAS zip: `Expand-Archive` to `research/data/tas/`
-- [ ] **C2** - Install FLE v0.3.0: `uv pip install "factorio-learning-environment[eval]==0.3.0"`
-- [ ] **C3** - Copy scenario into Factorio, create server-settings.json
-- [ ] **C4** - Start Ollama, pull `qwen2.5-coder:14b`
-- [ ] **C5** - Start Factorio headless, verify RCON connects
+  - Steam -> Factorio -> Properties -> Betas -> select `1.1.x-branch` -> Close
+  - Wait for ~1GB download
+  - Verify: `& "C:\Program Files (x86)\Steam\steamapps\common\Factorio\bin\x64\factorio.exe" --version`
+  - Should print `1.1.x` - not 2.0
+
+- [ ] **C1** - Extract TAS zip to `research/data/tas/`
+  - Download from https://mods.factorio.com/mod/Theis_TAS_Steelaxe2 if not already
+  ```powershell
+  Expand-Archive "$env:USERPROFILE\Downloads\Theis_TAS_Steelaxe2_0.3.0.zip" `
+      -DestinationPath "C:\Users\m_ren\repos\factorio-learning-environment\research\data\tas"
+  ```
+  - Verify: `research/data/tas/Theis_TAS_Steelaxe2_0.3.0/steps.lua` exists
+
+- [ ] **C2** - Create venv and install FLE v0.3.0
+  ```powershell
+  cd C:\Users\m_ren\repos\factorio-learning-environment
+  uv venv --python 3.13
+  .venv\Scripts\Activate.ps1
+  uv pip install "factorio-learning-environment[eval]==0.3.0"
+  ```
+
+- [ ] **C3** - Copy FLE scenario into local Factorio and create server-settings.json
+  ```powershell
+  New-Item -ItemType Directory -Force "$env:APPDATA\Factorio\scenarios\default_lab_scenario"
+  Copy-Item -Recurse -Force "fle\cluster\scenarios\default_lab_scenario\*" `
+      "$env:APPDATA\Factorio\scenarios\default_lab_scenario\"
+  ```
+  - server-settings.json is auto-created by `start_headless.ps1` if missing
+
+- [ ] **C4** - Pull the primary model
+  ```powershell
+  ollama pull qwen2.5-coder:14b
+  ```
+  - ~5GB download. Note: `qwen2.5:7b-instruct` already on system is a different variant - not suitable.
+
+- [ ] **C5** - Start Factorio headless and verify RCON connects
+  ```powershell
+  # Terminal 1
+  .\research\scripts\start_headless.ps1
+
+  # Terminal 2 - verify
+  .venv\Scripts\Activate.ps1
+  python -c "
+  import asyncio
+  from fle.env import FactorioInstance
+  async def main():
+      inst = FactorioInstance(address='localhost', rcon_port=27000, rcon_password='factorio')
+      await inst.reset()
+      print('RCON OK')
+  asyncio.run(main())
+  "
+  ```
+
 - [ ] **C6** - Connect game client as LAN spectator (visual sanity check)
+  - Launch Factorio client -> Multiplayer -> Connect to server -> `localhost`
+
 - [ ] **C7** - Run FLE's existing `basic_agent.py` against task 1 with `qwen2.5-coder:14b`
+
 - [ ] **C8** - Run all 24 lab tasks zero-shot, record completion rate -> this is your local baseline
-- [ ] **C9** - Log results to `research/results/baseline_qwen25coder14b_zeroshot.json`
+  ```powershell
+  python research/scripts/run_experiment.py --model ollama-qwen2.5-coder:14b --condition zero_shot
+  ```
+
+- [ ] **C9** - Results auto-saved to `research/results/`. Summarize:
+  ```powershell
+  python research/scripts/summarize_results.py
+  ```
 
 Expected: something worse than 7/24 (Claude baseline), probably 2-5/24 for a 14B model.
 
