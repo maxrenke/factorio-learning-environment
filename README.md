@@ -1,3 +1,10 @@
+> **Research Fork** - [@maxrenke](https://github.com/maxrenke)
+> Investigating TAS-grounded LLM agents: using Tool-Assisted Speedrun expert demonstrations
+> to improve lab task completion in FLE. See [`research/`](research/) for setup, experiments,
+> and results. Upstream: [JackHopkins/factorio-learning-environment](https://github.com/JackHopkins/factorio-learning-environment).
+
+---
+
 <h1 align="center">Factorio Learning Environment</h1>
 <p align="center">
   <a href="https://jackhopkins.github.io/factorio-learning-environment/leaderboard">Leaderboard</a> | <a href="https://arxiv.org/abs/2503.09617">Paper</a> | <a href="https://jackhopkins.github.io/factorio-learning-environment/versions/0.3.0.html">Website</a> | <a href="https://jackhopkins.github.io/factorio-learning-environment/sphinx/build/html/">Documentation</a> | <a href="https://discord.gg/zKaV2skewa">Discord (#factorio-learning-env)</a>

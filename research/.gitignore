@@ -1,0 +1,6 @@
+# TAS source data - download manually, not committed
+data/tas/
+data/*.zip
+
+# Result JSONs ARE committed (reproducibility)
+!results/*.json

@@ -1,0 +1,163 @@
+"""
+Run a full 24-task FLE evaluation and save results to research/results/.
+
+Usage:
+    python research/scripts/run_experiment.py \
+        --model ollama-qwen2.5-coder:14b \
+        --condition zero_shot \
+        --max-steps 50
+
+    python research/scripts/run_experiment.py \
+        --model ollama-qwen2.5-coder:14b \
+        --condition tas_40 \
+        --tas-steps 40
+
+Conditions:
+    zero_shot   - standard BasicAgent, no TAS context
+    tas_N       - TASGroundedAgent with N steps injected
+"""
+
+import asyncio
+import argparse
+import json
+import sys
+import uuid
+from datetime import datetime
+from pathlib import Path
+
+# Add repo root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from fle.env import FactorioInstance
+
+
+def load_tasks():
+    """Load FLE lab tasks. Adjust path if needed after inspecting configs/."""
+    task_paths = [
+        Path("fle/configs/experiments/lab_tasks.json"),
+        Path("fle/configs/experiments-2/lab_tasks.json"),
+        Path("fle/configs/gym_run_config.json"),
+    ]
+    for p in task_paths:
+        if p.exists():
+            data = json.loads(p.read_text())
+            # Handle different config shapes
+            if isinstance(data, list):
+                return data
+            if "tasks" in data:
+                return data["tasks"]
+    raise FileNotFoundError("Could not find lab tasks config. Check fle/configs/experiments/")
+
+
+async def run_single_task(instance, agent, task, max_steps: int):
+    """Run one task, return result dict."""
+    await instance.reset()
+    try:
+        conversation = await agent.run(instance, max_steps=max_steps)
+        score = getattr(conversation, "score", None)
+        completed = score is not None and score > 0
+        return {
+            "completed": completed,
+            "score": score if score is not None else 0,
+            "steps_taken": len(getattr(conversation, "messages", [])),
+            "error": None,
+        }
+    except Exception as e:
+        return {
+            "completed": False,
+            "score": 0,
+            "steps_taken": 0,
+            "error": str(e),
+        }
+
+
+async def main(args):
+    results_dir = Path("research/results")
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    run_id = f"{args.model.replace('/', '_').replace(':', '_')}_{args.condition}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    print(f"Run: {run_id}")
+
+    # Build agent
+    if args.condition == "zero_shot":
+        from fle.agents.basic_agent import BasicAgent
+        def make_agent(task):
+            return BasicAgent(model=args.model, system_prompt="", task=task)
+    elif args.condition.startswith("tas_"):
+        from research.agents.tas_agent import TASGroundedAgent
+        n = int(args.condition.split("_")[1])
+        def make_agent(task):
+            return TASGroundedAgent(model=args.model, task=task, tas_steps=n)
+    else:
+        raise ValueError(f"Unknown condition: {args.condition}. Use 'zero_shot' or 'tas_N'")
+
+    instance = FactorioInstance(
+        address="localhost",
+        rcon_port=args.rcon_port,
+        rcon_password=args.rcon_password,
+    )
+
+    try:
+        tasks = load_tasks()
+    except FileNotFoundError as e:
+        print(f"ERROR: {e}")
+        print("Tip: inspect fle/configs/ to find the right task file path")
+        return 1
+
+    print(f"Loaded {len(tasks)} tasks")
+
+    task_results = {}
+    completed_count = 0
+
+    for i, task_config in enumerate(tasks):
+        task_name = getattr(task_config, "name", None) or task_config.get("name", f"task_{i+1:02d}")
+        print(f"  [{i+1:2d}/{len(tasks)}] {task_name} ... ", end="", flush=True)
+
+        agent = make_agent(task_config)
+        result = await run_single_task(instance, agent, task_config, args.max_steps)
+
+        task_results[task_name] = result
+        if result["completed"]:
+            completed_count += 1
+            print(f"PASS (score={result['score']})")
+        else:
+            err = f" [{result['error'][:40]}]" if result["error"] else ""
+            print(f"fail{err}")
+
+    completion_rate = completed_count / len(tasks) if tasks else 0
+    print(f"\nCompleted: {completed_count}/{len(tasks)} ({completion_rate:.1%})")
+
+    output = {
+        "run_id": run_id,
+        "model": args.model,
+        "condition": args.condition,
+        "tas_steps_injected": int(args.condition.split("_")[1]) if args.condition.startswith("tas_") else 0,
+        "factorio_version": "2.0.76",
+        "fle_version": "0.3.0",
+        "date": datetime.now().isoformat(),
+        "max_steps_per_task": args.max_steps,
+        "tasks": task_results,
+        "summary": {
+            "completed": completed_count,
+            "total": len(tasks),
+            "completion_rate": completion_rate,
+        },
+    }
+
+    out_path = results_dir / f"{run_id}.json"
+    out_path.write_text(json.dumps(output, indent=2))
+    print(f"Results -> {out_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", default="ollama-qwen2.5-coder:14b")
+    parser.add_argument("--condition", default="zero_shot",
+                        help="zero_shot | tas_10 | tas_40 | tas_100")
+    parser.add_argument("--max-steps", type=int, default=50)
+    parser.add_argument("--rcon-port", type=int, default=27000)
+    parser.add_argument("--rcon-password", default="factorio")
+    args = parser.parse_args()
+
+    raise SystemExit(asyncio.run(main(args)))
