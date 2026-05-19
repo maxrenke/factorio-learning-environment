@@ -1,7 +1,8 @@
 > **Research Fork** - [@maxrenke](https://github.com/maxrenke)
-> Investigating TAS-grounded LLM agents: using Tool-Assisted Speedrun expert demonstrations
-> to improve lab task completion in FLE. See [`research/`](research/) for setup, experiments,
-> and results. Upstream: [JackHopkins/factorio-learning-environment](https://github.com/JackHopkins/factorio-learning-environment).
+> **Hypothesis:** TAS (Tool-Assisted Speedrun) expert demonstrations improve LLM lab task completion in FLE.
+> Four-phase plan: few-shot context -> LoRA fine-tuning (14B) -> small dedicated model (3B) -> RL from FLE scores.
+> See [`research/README.md`](research/README.md) for setup, phases, and experiments.
+> Upstream: [JackHopkins/factorio-learning-environment](https://github.com/JackHopkins/factorio-learning-environment).
 
 ---
 
