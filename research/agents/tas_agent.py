@@ -21,18 +21,19 @@ from fle.agents.basic_agent import BasicAgent
 # not specific coordinates that won't transfer to FLE's lab scenarios.
 
 def abstract_position(fle_call: str) -> str:
-    """Replace hardcoded coordinates with descriptive placeholders."""
-    # move_to((x, y)) -> move_to(<nearest iron/coal patch>)
+    """Replace hardcoded coordinates with generic valid-Python equivalents."""
+    # move_to((x, y)) -> move_to(nearest_position)
     if fle_call.startswith("move_to"):
-        return "move_to(<nearest resource or build site>)"
+        return re.sub(r"move_to\([^)]+\)", "move_to(nearest_resource_position)", fle_call)
     # harvest_resource(nearest('resource', (x, y))) -> harvest_resource(nearest('resource'))
     if "harvest_resource" in fle_call:
         return re.sub(r"nearest\('resource',\s*\([^)]+\)\)", "nearest('resource')", fle_call)
-    # place_entity keeps position concept but strips exact coords
+    # place_entity: strip position kwarg entirely - direction + entity name is the useful signal
     if "place_entity" in fle_call:
-        return re.sub(r"position=\([^)]+\)", "position=<adjacent to furnace/drill>", fle_call)
+        return re.sub(r",\s*position=\([^)]+\)", "", fle_call)
+    # extract_item / insert_item: strip position from nested get_entity call
     if "get_entity" in fle_call:
-        return re.sub(r"position=\([^)]+\)", "position=<nearest entity>", fle_call)
+        return re.sub(r"get_entity\(position=\([^)]+\)\)", "get_entity(position=nearest_entity_position)", fle_call)
     return fle_call
 
 

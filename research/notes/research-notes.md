@@ -4,6 +4,10 @@
 **Author:** maxrenke
 **Status:** Pre-experiment - setup phase
 
+> **Audit note (2026-05-18):** FLE is now v0.4.0 (not v0.3.0 as originally noted).
+> Inventory API changed - returns arrays not dicts. Task count is now 33 (not 24).
+> All version references below should be treated accordingly.
+
 ---
 
 ## Summary
@@ -498,3 +502,45 @@ Results saved to `research/results/` as JSON:
 5. **FLE scenario vs TAS scenario**: FLE's `default_lab_scenario` has pre-placed resources.
    The TAS plays on a generated freeplay map. The demonstrations may not transfer perfectly
    to FLE's constrained lab environment - this is an interesting finding either way.
+
+6. **FLE is v0.4.0 not v0.3.0**: CHANGELOG confirms v0.4.0 is current. Inventory API
+   returns arrays not dicts. Task count is 33 not 24. Verify all eval code against
+   installed version before running. FLE is also a NeurIPS 2025 poster - higher visibility
+   means the publication window is tighter.
+
+7. **Task-loading in run_experiment.py is unverified**: The script tries three hardcoded
+   config paths. One may not exist. Verify the correct path after installing FLE v0.4.0.
+
+---
+
+## Additional TAS Sources
+
+| TAS | Source | Factorio version | Category | Usefulness |
+|-----|--------|-----------------|----------|------------|
+| Steelaxe2 (have it) | [mods.factorio.com](https://mods.factorio.com/mod/Theis_TAS_Steelaxe2) | 1.1 | Steel Axe% 7:35 | Primary |
+| AutoFactorio | [github.com/Alex40144/AutoFactorio](https://github.com/Alex40144/AutoFactorio) | 2.0 (current) | General automation | Worth adding - targets 2.0, has companion generator |
+| AnyPctTAS | [mods.factorio.com](https://mods.factorio.com/mod/AnyPctTAS) | 0.18 only | Any% rocket 1:21 | Skip - hard-pinned to 0.18.17 |
+| Space Age TAS | - | - | Any% | Does not exist yet. Human WR is 7:31 (AntiElitz, Aug 2025). |
+
+## Additional Related Papers (from audit)
+
+- **"Leveraging In-Context Learning for Language Agents"** (arxiv 2506.13109, June 2025):
+  Trajectory *snippets at each step* beat a single injected trajectory. Better design:
+  retrieve 3-5 relevant TAS steps per agent turn rather than 40 upfront.
+
+- **"Self-Generated In-Context Examples Improve LLM Agents"** (arxiv 2505.00234, May 2025):
+  Accumulating agent's own successful trajectories: ALFWorld 73% -> 93%. Add as condition:
+  TAS + accumulated successes.
+
+- **"Imitation Learning via On-Policy Expert Corrections"** (arxiv 2512.14895, Dec 2024):
+  Mixing student rollouts with expert corrections: 14% improvement over pure imitation.
+  Apply to fine-tuning phase: hybrid agent+TAS trajectories, not pure TAS.
+
+## Test Suite
+
+Three tests in `research/tests/` catch silent failures:
+- `test_parse_tas.py` - verify step translation correctness
+- `test_tas_agent.py` - verify prompt has no broken placeholders, respects n limit
+- `test_results_schema.py` - verify result JSON schema before summarize reads it
+
+Run: `python -m pytest research/tests/`
