@@ -11,7 +11,8 @@
 - Factorio 2.0 / Space Age has no TAS yet. Defer until PoC is complete.
 - FLE v0.3.0 (Oct 2025) is the paper version, targets Factorio 1.1.110, has 24 lab tasks.
 - FLE v0.4.0+ migrated to Factorio 2.0 - do not use for this research phase.
-- AutoFactorio (2.0) deferred. AnyPctTAS (0.18) skipped permanently.
+- AnyPctTAS (0.18) skipped - hard-pinned to Factorio 0.18.17, incompatible.
+- AutoFactorio: never functionally implemented, cute idea but no usable TAS data. Historical note only.
 
 ---
 
@@ -530,7 +531,7 @@ Results saved to `research/results/` as JSON:
 | TAS | Source | Factorio version | Category | Usefulness |
 |-----|--------|-----------------|----------|------------|
 | Steelaxe2 (have it) | [mods.factorio.com](https://mods.factorio.com/mod/Theis_TAS_Steelaxe2) | 1.1 | Steel Axe% 7:35 | Primary |
-| AutoFactorio | [github.com/Alex40144/AutoFactorio](https://github.com/Alex40144/AutoFactorio) | 2.0 (current) | General automation | Worth adding - targets 2.0, has companion generator |
+| AutoFactorio | [github.com/Alex40144/AutoFactorio](https://github.com/Alex40144/AutoFactorio) | 2.0 | General automation | **Never implemented** - exists as a repo but no usable TAS data was produced. Do not use. |
 | AnyPctTAS | [mods.factorio.com](https://mods.factorio.com/mod/AnyPctTAS) | 0.18 only | Any% rocket 1:21 | Skip - hard-pinned to 0.18.17 |
 | Space Age TAS | - | - | Any% | Does not exist yet. Human WR is 7:31 (AntiElitz, Aug 2025). |
 
