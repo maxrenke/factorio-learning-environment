@@ -66,6 +66,11 @@ research/
 
 ## Setup (Windows, No Docker)
 
+> **Harness status:** the eval scripts were written ahead of the FLE v0.3.0 API and
+> have known blockers (wrong `BasicAgent` import path, non-existent `agent.run()`, repo
+> source is v0.4.3 not v0.3.0). Work through the **PRE-FLIGHT validation gate (V0-V5)**
+> in [`notes/research-notes.md`](notes/research-notes.md) before running any experiment.
+
 Full setup instructions are in [`notes/research-notes.md`](notes/research-notes.md).
 Quick version:
 

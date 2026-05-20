@@ -15,6 +15,12 @@ Usage:
 Conditions:
     zero_shot   - standard BasicAgent, no TAS context
     tas_N       - TASGroundedAgent with N steps injected
+
+WARNING - NOT YET RUNNABLE against FLE v0.3.0:
+    run_single_task() calls `agent.run(instance, max_steps=...)`, but v0.3.0
+    BasicAgent has no run() method - the loop is driven externally by
+    GymTrajectoryRunner (fle/eval/algorithms/independent/trajectory_runner.py).
+    This script must be rewritten to wrap that runner. See roadmap step V4.
 """
 
 import asyncio
@@ -79,7 +85,11 @@ async def main(args):
 
     # Build agent
     if args.condition == "zero_shot":
-        from fle.agents.basic_agent import BasicAgent
+        # v0.4.x: fle.agents.basic_agent  /  v0.3.0: examples.agents.basic_agent
+        try:
+            from fle.agents.basic_agent import BasicAgent
+        except ImportError:
+            from examples.agents.basic_agent import BasicAgent
         def make_agent(task):
             return BasicAgent(model=args.model, system_prompt="", task=task)
     elif args.condition.startswith("tas_"):
@@ -141,7 +151,7 @@ async def main(args):
         "model": args.model,
         "condition": args.condition,
         "tas_steps_injected": int(args.condition.split("_")[1]) if args.condition.startswith("tas_") else 0,
-        "factorio_version": "2.0.76",
+        "factorio_version": "1.1.110",
         "fle_version": "0.3.0",
         "date": datetime.now().isoformat(),
         "max_steps_per_task": args.max_steps,

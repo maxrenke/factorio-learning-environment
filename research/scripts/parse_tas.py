@@ -21,8 +21,13 @@ from pathlib import Path
 
 
 def parse_coords(line):
-    m = re.search(r"\{([-\d.]+),\s*([-\d.]+)\}", line)
-    return (float(m.group(1)), float(m.group(2))) if m else None
+    # Step format: step[N] = {{task_id, subtask_id}, "action", {x, y}, ...}
+    # The FIRST {a,b} group is the {task_id, subtask_id} prefix - skip it.
+    # The coordinate pair, when present, is the SECOND {x,y} group.
+    groups = re.findall(r"\{(-?[\d.]+),\s*(-?[\d.]+)\}", line)
+    if len(groups) >= 2:
+        return (float(groups[1][0]), float(groups[1][1]))
+    return None
 
 
 def parse_strings(line):

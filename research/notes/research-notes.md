@@ -87,10 +87,10 @@ This is the sequencing knowledge the LLM paper identified as a primary failure m
 
 ### Version note
 
-The TAS was made for Factorio 1.1. FLE targets 2.0.73+. The TAS is not directly executed
-inside FLE - it is converted to natural-language / Python demonstrations injected into the
-LLM's context. The specific map seed and entity names (`burner-mining-drill`, `stone-furnace`)
-are valid in 2.0, so the demonstrations translate cleanly.
+The TAS was made for Factorio 1.1. This research pins to **FLE v0.3.0 + Factorio 1.1**
+(see locked Scope at top), so TAS entity names (`burner-mining-drill`, `stone-furnace`)
+match the environment version directly - no 2.0 migration needed. The TAS is not executed
+inside FLE; it is converted to Python demonstrations injected into the LLM's context.
 
 ---
 
@@ -663,6 +663,47 @@ Goal: confirm FLE works on this machine, reproduce paper baseline numbers.
 
 Expected: something worse than 7/24 (Claude baseline), probably 2-5/24 for a 14B model.
 
+### PRE-FLIGHT - Harness validation gate (do BEFORE C7)
+
+Goal: catch the four known blockers before burning hours on a broken eval loop.
+An audit of the scripts against the v0.3.0 FLE source found the harness will crash
+on first run. Resolve all V-steps before attempting C7-C9. See "Known Issues -> BLOCKERS".
+
+- [ ] **V0** - Decide the repo branch base. The repo `fle/` is currently v0.4.3, but the
+      research targets v0.3.0. Recommended:
+  ```powershell
+  git checkout -b research/v0.3.0 v0.3.0      # branch off the v0.3.0 tag
+  git checkout main -- research/              # bring the research/ dir onto it
+  git commit -m "Rebase research onto FLE v0.3.0 source"
+  ```
+  After this the repo's own `fle/` IS v0.3.0 and the pip pin is no longer load-bearing.
+  Install deps from the v0.3.0 source: `uv pip install -e ".[eval]"`
+
+- [ ] **V1** - Confirm `import fle` resolves to v0.3.0:
+  ```powershell
+  python -c "import fle, fle.env; print(fle.__file__)"   # must not raise; lupa must import
+  ```
+  If `ModuleNotFoundError: lupa` -> `uv pip install lupa` (or install the `[eval]` extra).
+
+- [ ] **V2** - Confirm the `BasicAgent` import path. v0.3.0: `examples.agents.basic_agent`.
+  ```powershell
+  python -c "from examples.agents.basic_agent import BasicAgent; print('ok')"
+  ```
+
+- [ ] **V3** - Verify the FLE agent namespace and API surface used by `parse_tas.py`:
+      does `nearest()` accept a resource type, is `Direction` the right identifier,
+      what is the real `place_entity` signature? Fix `parse_tas.py` / `tas_agent.py`
+      output to match. Re-run `python -m pytest research/tests/` after.
+
+- [ ] **V4** - Rewrite `run_experiment.py` against the real v0.3.0 harness. `agent.run()`
+      does not exist. Either wrap `GymTrajectoryRunner`
+      (`fle/eval/algorithms/independent/trajectory_runner.py`) or drive the eval through
+      `fle/eval/entrypoints/independent_run_a2a.py`. Validate on ONE task before the full 24.
+
+- [ ] **V5** - Run `python -m pytest research/tests/` - all green before proceeding.
+
+Gate: do not start C7 until V0-V5 pass.
+
 ### WALK - TAS integration and first comparison
 
 Goal: implement TAS context injection, run the 2x2 core experiment.
@@ -722,7 +763,7 @@ Results saved to `research/results/` as JSON:
   "model": "ollama-qwen2.5-coder:14b",
   "condition": "zero_shot",
   "tas_steps_injected": 0,
-  "factorio_version": "2.0.76",
+  "factorio_version": "1.1.110",
   "fle_version": "0.3.0",
   "date": "2026-05-18",
   "tasks": {
@@ -747,7 +788,7 @@ Results saved to `research/results/` as JSON:
 | RAM | 32GB |
 | CPU | Ryzen 7 5800XT |
 | OS | Windows 11 Pro 10.0.26200 |
-| Factorio | 2.0.76 (Steam) at `C:\Program Files (x86)\Steam\steamapps\common\Factorio` |
+| Factorio | 2.0.76 installed - **must downgrade to 1.1.x** (step C0) at `C:\Program Files (x86)\Steam\steamapps\common\Factorio` |
 | Python | 3.13 (uv) |
 | Ollama | 0.24.0 |
 | Primary model | `qwen2.5-coder:14b` (~8.5GB VRAM, Q4) |
@@ -767,34 +808,66 @@ Results saved to `research/results/` as JSON:
 
 ## Known Issues / Open Questions
 
-1. **Factorio version mismatch**: TAS built on 1.1, FLE targets 2.0.73. Need to verify
-   all entity names in TAS steps are valid in 2.0 (`stone-furnace`, `burner-mining-drill`
-   both confirmed valid).
+### BLOCKERS - must fix before any eval can run
 
-2. **deepseek-r1 thinking tags**: `<think>...</think>` prefix will cause FLE's policy
-   parser to reject the response. Either patch `fle/agents/llm/parsing.py` or use the
-   distilled variant.
+These were found by auditing the scripts against the actual v0.3.0 FLE source
+(git tag `v0.3.0`). The harness will crash on first run until these are resolved.
 
-3. **Map-specific coordinates**: TAS coordinates are for the steelaxe% fixed seed map.
+1. **Repo source is v0.4.3, not v0.3.0** *(critical)*. The checked-out `fle/` directory
+   is FLE v0.4.3 (`pyproject.toml` -> `version = "0.4.3"`, Factorio 2.0 API). The research
+   targets v0.3.0. `run_experiment.py` does `sys.path.insert(0, repo_root)`, so `import fle`
+   resolves to the repo's v0.4.3 source - the `uv pip install ...==0.3.0` pin is silently
+   defeated. **Fix:** base the research branch on the `v0.3.0` git tag so the repo's own
+   `fle/` *is* v0.3.0. See pre-flight step V0 in the roadmap.
+
+2. **`BasicAgent` import path is wrong** *(critical)*. `tas_agent.py` and `run_experiment.py`
+   both do `from fle.agents.basic_agent import BasicAgent`. In v0.3.0 `BasicAgent` lives at
+   `examples/agents/basic_agent.py` (import as `examples.agents.basic_agent` from repo root).
+   The scripts now try the v0.4.x path first and fall back to the v0.3.0 path.
+
+3. **`agent.run()` does not exist** *(critical)*. `run_experiment.py` calls
+   `await agent.run(instance, max_steps=...)`. v0.3.0 `BasicAgent(AgentABC)` exposes only
+   `step()`, `_get_policy()`, `end()` - there is no `run()`. The agent loop is driven
+   externally by `GymTrajectoryRunner.run()` in
+   `fle/eval/algorithms/independent/trajectory_runner.py`, or via the A2A entrypoint
+   `fle/eval/entrypoints/independent_run_a2a.py`. **`run_experiment.py` must be rewritten**
+   to either (a) wrap `GymTrajectoryRunner`, or (b) shell out to `independent_run_a2a.py`.
+   This is the single largest piece of remaining work - see roadmap step V4.
+
+4. **`nearest('resource', ...)` is invalid** *(blocks TAS mine steps)*. `parse_tas.py`
+   translates TAS `mine` steps to `harvest_resource(nearest('resource', (x,y)))`. FLE's
+   `nearest()` requires a concrete resource type (`'iron-ore'`, `'coal'`, `'copper-ore'`,
+   `'stone'`); `'resource'` is not a valid prototype. The TAS `mine` step carries only
+   coordinates, not the resource name. **Fix options:** infer the type from the entity at
+   those coords during a TAS replay, or emit a `# MINE` comment placeholder.
+
+### Open questions / risks
+
+5. **`Direction` enum in few-shot output**: `parse_tas.py` emits
+   `place_entity('...', direction=Direction.NORTH, ...)`. Verify the FLE agent namespace
+   exposes `Direction` as that identifier - if not, the injected few-shot code is invalid
+   Python and will teach the model a broken pattern. Check in pre-flight V3.
+
+6. **deepseek-r1 thinking tags**: `<think>...</think>` prefix will cause FLE's policy
+   parser to reject the response. Either patch the v0.3.0 parser
+   (`fle/agents/llm/parsing.py`) or use the distilled variant.
+
+7. **Map-specific coordinates**: TAS coordinates are for the steelaxe% fixed seed map.
    FLE uses a different map. Demonstrations with hardcoded positions (`walk to -31, 7`)
    won't transfer directly - the agent must understand the *pattern* not the coordinates.
-   Mitigate by abstracting steps to higher-level descriptions before injection.
+   `tas_agent.abstract_position()` strips coordinates before injection.
 
-4. **Context length**: 5721 steps x ~40 tokens each = ~230K tokens. Too long for most
+8. **Context length**: 5721 steps x ~40 tokens each = ~230K tokens. Too long for most
    models. Use first 40-100 steps (the critical early-game sequencing) rather than the
    full run.
 
-5. **FLE scenario vs TAS scenario**: FLE's `default_lab_scenario` has pre-placed resources.
+9. **FLE scenario vs TAS scenario**: FLE's `default_lab_scenario` has pre-placed resources.
    The TAS plays on a generated freeplay map. The demonstrations may not transfer perfectly
    to FLE's constrained lab environment - this is an interesting finding either way.
 
-6. **Pin to FLE v0.3.0**: Upstream is now v0.4.3 (Factorio 2.0, arrays API, 33 tasks).
-   We target v0.3.0 (Factorio 1.1, dict API, 24 tasks). Install with version pin.
-   FLE is a NeurIPS 2025 poster - higher visibility tightens publication window.
-
-7. **Task-loading resolved**: `run_experiment.py` now imports directly from
-   `fle.eval.tasks.task_definitions.lab_play.throughput_tasks.THROUGHPUT_TASKS`.
-   Tasks are string env_ids. Verified against v0.3.0 source.
+10. **Entity-name validity**: TAS uses Factorio 1.1 names (`stone-furnace`,
+    `burner-mining-drill`). These are valid in 1.1 - the target version - so no 2.0
+    migration concern while scope stays at 1.1 + v0.3.0.
 
 ---
 

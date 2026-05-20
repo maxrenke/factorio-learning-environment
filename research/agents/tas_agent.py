@@ -12,7 +12,12 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from fle.agents.basic_agent import BasicAgent
+# BasicAgent location differs by FLE version:
+#   v0.4.x: fle.agents.basic_agent       v0.3.0: examples.agents.basic_agent
+try:
+    from fle.agents.basic_agent import BasicAgent
+except ImportError:
+    from examples.agents.basic_agent import BasicAgent
 
 
 # ---- Coordinate abstraction -----------------------------------------------
