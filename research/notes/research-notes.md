@@ -885,6 +885,53 @@ These were found by auditing the scripts against the actual v0.3.0 FLE source
 | AnyPctTAS | [mods.factorio.com](https://mods.factorio.com/mod/AnyPctTAS) | 0.18 only | Any% rocket 1:21 | Skip - hard-pinned to 0.18.17 |
 | Space Age TAS | - | - | Any% | Does not exist yet. Human WR is 7:31 (AntiElitz, Aug 2025). |
 
+## Related Work - Parallel Approaches
+
+### "A.I. Learns to Optimize Factorio Blueprints" (YouTube, 2025)
+**Link:** https://youtu.be/mGOKKtIDNbk
+
+Independent project pursuing the same end goal ("a fully autonomous bot to play Factorio
+and beat the game") from the blueprint-generation direction rather than LLM agents.
+
+**What he built:**
+- **Genetic algorithm** over a population of blueprints: selection, crossover, mutation
+- **Wave Function Collapse (WFC)** to generate structurally valid blueprints - adjacency
+  rules enforce that belts connect, inserters have valid pickup/dropoff targets, assemblers
+  stay intact as 3x3 blocks. Solves the "garbage output" problem that plagues pure random
+  generation.
+- **Test harness:** infinite input chests + bottomless output chests per blueprint, run
+  in headless Factorio - functionally identical to FLE's lab scenario setup.
+- Result: working optimized iron gear and green circuit blueprints emerged from random search.
+
+**Key insights applicable here:**
+
+- *"You don't need to be clever about how you generate traits, but you do need to be
+  clever about how you evaluate fitness."* - Same lesson as Phase 4's dense reward
+  shaping. Sparse end-of-episode reward fails; you need intermediate signal.
+- His fitness function progression (no output -> assembly machine present -> items on belt
+  -> items in output chest) is a manual curriculum - same idea as the 6-stage curriculum
+  in Phase 4, arrived at independently.
+- WFC as a **constrained action space**: instead of the LLM generating free-form Python,
+  it could steer WFC parameters to guarantee structurally valid builds. Relevant if Phase 4
+  RL struggles with invalid action generation wasting episodes.
+- His GA + evaluation infrastructure could generate a **synthetic training corpus** for
+  Phase 2/3 LoRA - optimal blueprint sequences as training data supplementing the TAS.
+
+**Differences from this project:**
+- GA operates on a population of static blueprints simultaneously; RL operates on a
+  single policy that improves continuously. GA is stateless between generations; RL
+  has persistent weights.
+- GA has no gradient signal - purely selection pressure. This project uses gradient-based
+  learning throughout (SFT in phases 2-3, policy gradient in phase 4).
+- WFC guarantees structural validity at generation time; LLM must learn validity from
+  demonstrations and feedback.
+
+**Relationship to this project:** complementary, not overlapping. Cite in paper section 2
+(Background) as a concurrent independent approach to the same problem from the
+search/optimization direction.
+
+---
+
 ## Additional Related Papers (from audit)
 
 - **"Leveraging In-Context Learning for Language Agents"** (arxiv 2506.13109, June 2025):
