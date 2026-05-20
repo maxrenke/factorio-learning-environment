@@ -85,9 +85,11 @@ git remote add upstream https://github.com/JackHopkins/factorio-learning-environ
 uv venv --python 3.13 && .venv\Scripts\Activate.ps1
 uv pip install "factorio-learning-environment[eval]==0.3.0"
 
-# 2. Copy FLE scenario into local Factorio (replaces Docker)
-Copy-Item -Recurse fle\cluster\scenarios\default_lab_scenario `
-    "$env:APPDATA\Factorio\scenarios\default_lab_scenario"
+# 2. Copy the v0.3.0 FLE scenario into local Factorio (replaces Docker).
+#    Pull from the v0.3.0 tag - the repo HEAD scenario targets Factorio 2.0.
+git archive v0.3.0 fle/cluster/scenarios/default_lab_scenario | tar -x -C "$env:TEMP\fle030"
+Copy-Item -Recurse -Force "$env:TEMP\fle030\fle\cluster\scenarios\default_lab_scenario\*" `
+    "$env:APPDATA\Factorio\scenarios\default_lab_scenario\"
 
 # 3. Download TAS mod, extract to research/data/tas/
 #    https://mods.factorio.com/mod/Theis_TAS_Steelaxe2

@@ -249,18 +249,22 @@ python research/scripts/run_experiment.py --model ollama-qwen2.5-coder:14b
 
 ### Verify RCON connection
 
+v0.3.0 API: `FactorioInstance` takes `tcp_port` (not `rcon_port`); the RCON password is
+the module constant `RCON_PASSWORD = "factorio"`, not a constructor argument. `reset()`
+is synchronous. Constructing the instance connects immediately - it raises if it cannot.
+
 ```python
-import asyncio
 from fle.env import FactorioInstance
 
-async def main():
-    inst = FactorioInstance(address="localhost", rcon_port=27000, rcon_password="factorio")
-    await inst.reset()
-    state = await inst.get_state()
-    print("tick:", state.game_tick, "inventory:", state.inventory)
-
-asyncio.run(main())
+# defaults: address="localhost", tcp_port=27000, password "factorio" - match start_headless.ps1
+inst = FactorioInstance(address="localhost", tcp_port=27000)
+inst.reset()
+print("RCON OK - connected to Factorio and reset the scenario")
 ```
+
+Run this from a directory **outside the repo** (with the venv active) so `import fle`
+resolves to the pip-installed v0.3.0 - not the repo's v0.4.3 `fle/` source. Or do
+pre-flight step V0 first.
 
 ---
 
@@ -614,13 +618,19 @@ Goal: confirm FLE works on this machine, reproduce paper baseline numbers.
   uv pip install "factorio-learning-environment[eval]==0.3.0"
   ```
 
-- [ ] **C3** - Copy FLE scenario into local Factorio and create server-settings.json
+- [ ] **C3** - Copy the **v0.3.0** FLE scenario into local Factorio
+  The repo HEAD is v0.4.3, whose scenario targets Factorio 2.0 and may not load in 1.1.
+  Pull the scenario from the `v0.3.0` git tag instead of the working tree:
   ```powershell
+  New-Item -ItemType Directory -Force "$env:TEMP\fle030"
+  git archive v0.3.0 fle/cluster/scenarios/default_lab_scenario | tar -x -C "$env:TEMP\fle030"
   New-Item -ItemType Directory -Force "$env:APPDATA\Factorio\scenarios\default_lab_scenario"
-  Copy-Item -Recurse -Force "fle\cluster\scenarios\default_lab_scenario\*" `
+  Copy-Item -Recurse -Force "$env:TEMP\fle030\fle\cluster\scenarios\default_lab_scenario\*" `
       "$env:APPDATA\Factorio\scenarios\default_lab_scenario\"
   ```
   - server-settings.json is auto-created by `start_headless.ps1` if missing
+  - After pre-flight V0 (branch off v0.3.0) the working tree IS v0.3.0 and you can
+    copy straight from `fle\cluster\scenarios\` instead.
 
 - [ ] **C4** - Pull the primary model
   ```powershell
@@ -630,21 +640,16 @@ Goal: confirm FLE works on this machine, reproduce paper baseline numbers.
 
 - [ ] **C5** - Start Factorio headless and verify RCON connects
   ```powershell
-  # Terminal 1
+  # Terminal 1 - start the headless server
   .\research\scripts\start_headless.ps1
 
-  # Terminal 2 - verify
-  .venv\Scripts\Activate.ps1
-  python -c "
-  import asyncio
-  from fle.env import FactorioInstance
-  async def main():
-      inst = FactorioInstance(address='localhost', rcon_port=27000, rcon_password='factorio')
-      await inst.reset()
-      print('RCON OK')
-  asyncio.run(main())
-  "
+  # Terminal 2 - verify. Push-Location moves cwd out of the repo so `import fle`
+  # resolves to the pip-installed v0.3.0, not the repo's v0.4.3 source.
+  Push-Location $env:TEMP
+  & "C:\Users\m_ren\repos\factorio-learning-environment\.venv\Scripts\python.exe" -c "from fle.env import FactorioInstance; i = FactorioInstance(address='localhost', tcp_port=27000); i.reset(); print('RCON OK')"
+  Pop-Location
   ```
+  v0.3.0 API: `tcp_port` (not `rcon_port`), no `rcon_password` arg, `reset()` is sync.
 
 - [ ] **C6** - Connect game client as LAN spectator (visual sanity check)
   - Launch Factorio client -> Multiplayer -> Connect to server -> `localhost`
