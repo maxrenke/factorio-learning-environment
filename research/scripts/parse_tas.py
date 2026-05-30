@@ -53,9 +53,13 @@ def to_fle(line):
             return f"place_entity('{entity}', direction=Direction.{direction}, position=({coords[0]}, {coords[1]}))"
 
     if '"mine"' in line:
+        # TAS mine steps carry only coordinates, not the resource prototype name.
+        # nearest('resource', ...) is invalid in FLE (needs a concrete type like
+        # 'iron-ore'/'coal'/'stone'), so emit a comment placeholder rather than a
+        # broken call. Preserves the sequencing signal for the few-shot block.
         coords = parse_coords(line)
         if coords:
-            return f"harvest_resource(nearest('resource', ({coords[0]}, {coords[1]})))"
+            return f"# mine at ({coords[0]}, {coords[1]}) - harvest the nearest ore/resource here"
 
     if '"craft"' in line:
         strings = parse_strings(line)

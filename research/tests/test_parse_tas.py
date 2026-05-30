@@ -18,8 +18,10 @@ CASES = [
         ("place_entity", "burner-mining-drill", "-1.0", "10.0", "NORTH"),
     ),
     (
+        # mine steps lack a resource type, so they become a comment placeholder
+        # (nearest('resource', ...) is not a valid FLE call).
         'step[6] = {{6,1}, "mine", {-2.250000, 9.750000}, 1000}',
-        ("harvest_resource", "nearest", "-2.25", "9.75"),
+        ("# mine", "-2.25", "9.75"),
     ),
     (
         'step[10] = {{10,1}, "tech", "automation"}',

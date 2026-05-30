@@ -16,11 +16,19 @@ Conditions:
     zero_shot   - standard BasicAgent, no TAS context
     tas_N       - TASGroundedAgent with N steps injected
 
-WARNING - NOT YET RUNNABLE against FLE v0.3.0:
-    run_single_task() calls `agent.run(instance, max_steps=...)`, but v0.3.0
-    BasicAgent has no run() method - the loop is driven externally by
-    GymTrajectoryRunner (fle/eval/algorithms/independent/trajectory_runner.py).
-    This script must be rewritten to wrap that runner. See roadmap step V4.
+WARNING - NOT YET RUNNABLE against FLE v0.3.0 (blocker V4):
+    run_single_task() calls `agent.run(instance, max_steps=...)`, but v0.3.0 has
+    no such method. The real harness is GymTrajectoryRunner
+    (fle/eval/algorithms/independent/trajectory_runner.py), constructed as
+        GymTrajectoryRunner(config: GymEvalConfig, gym_env: FactorioGymEnv,
+                            process_id, db_client, ...)
+    and it drives a `GymAgent` (fle.agents.gym_agent) - NOT the BasicAgent this
+    script and tas_agent.py subclass. Wrapping it correctly also requires
+    FactorioGymEnv + GymEvalConfig + DBClient wiring. This is an architectural
+    rewrite that needs the v0.3.0 source checked out (pre-flight V0) and a venv
+    to validate against - do not attempt blind on the v0.4.3 working tree.
+    The FactorioInstance construction below is fixed for v0.3.0; the agent loop
+    is not. See roadmap step V4.
 """
 
 import asyncio
@@ -100,10 +108,11 @@ async def main(args):
     else:
         raise ValueError(f"Unknown condition: {args.condition}. Use 'zero_shot' or 'tas_N'")
 
+    # v0.3.0 API: FactorioInstance takes `tcp_port` (not `rcon_port`) and has no
+    # password kwarg - the RCON password is the module constant RCON_PASSWORD.
     instance = FactorioInstance(
         address="localhost",
-        rcon_port=args.rcon_port,
-        rcon_password=args.rcon_password,
+        tcp_port=args.tcp_port,
     )
 
     try:
@@ -175,8 +184,8 @@ if __name__ == "__main__":
     parser.add_argument("--condition", default="zero_shot",
                         help="zero_shot | tas_10 | tas_40 | tas_100")
     parser.add_argument("--max-steps", type=int, default=50)
-    parser.add_argument("--rcon-port", type=int, default=27000)
-    parser.add_argument("--rcon-password", default="factorio")
+    parser.add_argument("--tcp-port", type=int, default=27000,
+                        help="FLE RCON/TCP port (FactorioInstance tcp_port)")
     args = parser.parse_args()
 
     raise SystemExit(asyncio.run(main(args)))
