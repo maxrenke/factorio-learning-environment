@@ -602,7 +602,7 @@ Goal: confirm FLE works on this machine, reproduce paper baseline numbers.
   - Verify: `& "C:\Program Files (x86)\Steam\steamapps\common\Factorio\bin\x64\factorio.exe" --version`
   - Should print `1.1.x` - not 2.0
 
-- [ ] **C1** - Extract TAS zip to `research/data/tas/`
+- [x] **C1** - Extract TAS zip to `research/data/tas/` (done 2026-05-30; zip also kept at `research/data/Theis_TAS_Steelaxe2_0.3.0.zip`, both gitignored)
   - Download from https://mods.factorio.com/mod/Theis_TAS_Steelaxe2 if not already
   ```powershell
   Expand-Archive "$env:USERPROFILE\Downloads\Theis_TAS_Steelaxe2_0.3.0.zip" `
@@ -713,7 +713,7 @@ Gate: do not start C7 until V0-V5 pass.
 
 Goal: implement TAS context injection, run the 2x2 core experiment.
 
-- [ ] **W1** - Run `research/scripts/parse_tas.py` -> `research/data/tas_trajectory.json`
+- [x] **W1** - Run `research/scripts/parse_tas.py` -> `research/data/tas_trajectory.json` (done 2026-05-30; 6158 steps parsed, full run; few-shot block at `research/data/tas_fewshot_40.py`)
 - [ ] **W2** - Review translated steps, manually fix any mis-parsed actions
 - [ ] **W3** - Deploy `research/agents/tas_agent.py` (BasicAgent subclass with TAS addendum)
 - [ ] **W4** - Run all 24 tasks with TAS context on `qwen2.5-coder:14b`, record results
